@@ -4,6 +4,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { signOut } from "firebase/auth";
 import { auth } from "../services/firebase";
 
+const storedUser = JSON.parse(localStorage.getItem("user"));
+const user = storedUser?.data?.user;
+
 function TopBar() {
   const navigate = useNavigate();
 
@@ -25,19 +28,16 @@ function TopBar() {
   };
 
   return (
-    <header className="w-full sticky top-0 z-40 bg-slate-50/80 backdrop-blur-xl flex justify-between items-center px-12 py-6">
+    <header className="w-full sticky top-0 z-40 bg-slate-50/80 backdrop-blur-xl flex justify-between items-center px-6 py-4">
 
       {/* Search */}
       <div className="flex items-center space-x-8">
-        <div className="relative group">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-
-          <input
-            type="text"
-            placeholder="Search insights..."
-            className="bg-white border border-slate-200 rounded-full pl-10 pr-6 py-2 text-sm w-64 focus:ring-2 focus:ring-indigo-200 transition-all outline-none"
-          />
-        </div>
+        <h2 className="text-2xl font-bold leading-tight">
+            Welcome back,{" "}
+            <span className="bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">
+              {user?.name?.split(" ")[0]}
+            </span>
+          </h2>
       </div>
 
       {/* Right section */}
@@ -48,7 +48,7 @@ function TopBar() {
           to="/chat"
           className="p-2 hover:bg-slate-200/50 rounded-full transition-all"
         >
-          <Sparkles className="w-5 h-5 text-indigo-500" />
+          <Sparkles className="w-4 h-4 text-indigo-500" />
         </Link>
 
         {/* Logout */}
@@ -56,13 +56,13 @@ function TopBar() {
           onClick={handleLogout}
           className="p-2 hover:bg-red-100 rounded-full transition-all group"
         >
-          <LogOut className="w-5 h-5 text-red-500 group-hover:scale-110 transition-transform" />
+          <LogOut className="w-4 h-4 text-red-500 group-hover:scale-110 transition-transform" />
         </button>
 
         {/* Profile */}
-        <div className="h-10 w-10 rounded-full overflow-hidden ring-2 ring-indigo-200 cursor-pointer">
+        <div className="h-8 w-8 rounded-full overflow-hidden ring-2 ring-indigo-200 cursor-pointer">
           <img
-            src="https://picsum.photos/seed/user/100/100"
+            src={user?.picture}
             alt="User profile"
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
