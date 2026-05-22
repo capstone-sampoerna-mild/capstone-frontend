@@ -1,5 +1,9 @@
 import { Edit2, MapPin, Mail, Link as LinkIcon, Award, School, ArrowRight } from "lucide-react"
+const storedUser = JSON.parse(
+  localStorage.getItem("user")
+);
 
+const user = storedUser?.data?.user;
 // helper cn
 function cn(...classes) {
   return classes.filter(Boolean).join(" ")
@@ -15,7 +19,7 @@ function Profile() {
         {/* Avatar */}
         <div className="relative">
           <img
-            src="https://picsum.photos/seed/user/200/200"
+            src={user?.picture}
             className="w-28 h-28 rounded-xl object-cover"
           />
           <button className="absolute -bottom-2 -right-2 p-2 bg-indigo-500 text-white rounded-lg">
@@ -25,7 +29,7 @@ function Profile() {
 
         {/* Info */}
         <div className="flex-1">
-          <h2 className="text-2xl font-bold">Alexandria Sterling</h2>
+          <h2 className="text-2xl font-bold">{user?.name}</h2>
           <p className="text-indigo-500 text-sm">
             Senior UX Architect & AI Strategist
           </p>
@@ -35,7 +39,7 @@ function Profile() {
               <MapPin className="w-4 h-4" /> San Francisco
             </div>
             <div className="flex items-center gap-1">
-              <Mail className="w-4 h-4" /> email@mail.com
+              <Mail className="w-4 h-4" /> {user?.email}
             </div>
             <div className="flex items-center gap-1">
               <LinkIcon className="w-4 h-4" /> portfolio.com
