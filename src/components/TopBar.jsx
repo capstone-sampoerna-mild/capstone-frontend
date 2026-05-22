@@ -43,11 +43,6 @@ function TopBar() {
       {/* Right section */}
       <div className="flex items-center space-x-4">
 
-        {/* Notification */}
-        <button className="p-2 text-slate-600 hover:bg-slate-200/50 rounded-full transition-all">
-          <Bell className="w-5 h-5" />
-        </button>
-
         {/* AI Feature */}
         <Link
           to="/chat"

@@ -1,5 +1,8 @@
 import { MessageSquare, User, LayoutDashboard, Route, Settings, HelpCircle, Zap, Users, LogOut } from "lucide-react"
-import { NavLink } from "react-router-dom"
+import { NavLink, useNavigate } from "react-router-dom"
+
+import { signOut } from "firebase/auth"
+import { auth } from "../services/firebase"
 
 // simple className helper (pengganti cn dari TS project)
 function cn(...classes) {
@@ -14,14 +17,28 @@ const navItems = [
   // { icon: Users, label: "Mentors", path: "/mentors" },
 ]
 
-const bottomNavItems = [
-  { icon: LogOut, label: "Logout", path: "/settings" },
-]
-
 function Sidebar() {
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      // Logout Firebase
+      await signOut(auth);
+
+      // Hapus local storage
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+
+      // Redirect login
+      navigate("/login");
+
+    } catch (error) {
+      console.error("Logout Error:", error);
+    }
+  };
   return (
     <aside className="h-screen w-64 fixed left-0 top-0 bg-slate-100 dark:bg-slate-950 flex flex-col py-8 z-50">
-      
+
       {/* Logo */}
       <div className="px-8 mb-12">
         <h1 className="text-xl font-black text-indigo-600 dark:text-indigo-400">
@@ -53,21 +70,18 @@ function Sidebar() {
 
       {/* Bottom Menu */}
       <div className="mt-auto border-t border-slate-200/50 pt-6">
-        {bottomNavItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center space-x-4 px-6 py-3 text-slate-500 dark:text-slate-400 hover:translate-x-1 hover:text-indigo-500 transition-all duration-200",
-                isActive && "text-indigo-600 dark:text-indigo-300 font-bold"
-              )
-            }
-          >
-            <item.icon className="w-5 h-5" />
-            <span className="tracking-wide text-xs uppercase">{item.label}</span>
-          </NavLink>
-        ))}
+
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center space-x-4 px-6 py-3 text-slate-500 dark:text-slate-400 hover:translate-x-1 hover:text-red-500 transition-all duration-200"
+        >
+          <LogOut className="w-5 h-5" />
+
+          <span className="tracking-wide text-xs uppercase">
+            Logout
+          </span>
+        </button>
+
       </div>
 
     </aside>
