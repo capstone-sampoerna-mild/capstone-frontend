@@ -19,7 +19,7 @@ const InputSkill = ({
   handleRemoveFile,
 }) => {
 
-  console.log("skills :", skills)
+  
 
   return (
     <div className="

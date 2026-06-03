@@ -27,14 +27,11 @@ const Login = () => {
       // Ambil Firebase ID Token
       const idToken = await user.getIdToken();
 
-      console.log("Firebase Token:", idToken);
-
       // Kirim token ke backend Express
       const response = await api.post("/auth/google", {
         idToken,
       });
 
-      console.log("Backend Response:", response.data);
 
       // Simpan session
       localStorage.setItem("token", idToken);
@@ -45,10 +42,7 @@ const Login = () => {
     } catch (error) {
       console.error("FULL ERROR:", error);
 
-      if (error.response) {
-        console.log("Backend Error:", error.response.data);
-      }
-
+      throw(error);
       alert(error.message);
     } finally {
       setIsLoading(false);

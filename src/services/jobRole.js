@@ -53,10 +53,5 @@ export const uploadCV = async ({
     }
   )
 
-  console.log(
-    "Combined AI response:",
-    response.data
-  )
-
   return response.data
 }

@@ -59,7 +59,6 @@ function Dashboard() {
     if (file) {
       setFileName(file.name)
       setSelectedFile(file)
-      console.log("SELECTED FILE:", file)
     }
   }
 
@@ -96,7 +95,6 @@ function Dashboard() {
 
       // ================= PDF MODE =================
       if (selectedFile) {
-        console.log("UPLOADING PDF...")
         const uploadResponse = await uploadCV({
           file: selectedFile,
           skills,
