@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Mail, Star, Loader2, Code2, CheckCircle, Circle } from "lucide-react"; 
+import { Mail, Star, Loader2, Code2, CheckCircle, Circle } from "lucide-react"; // Tambah icon checklist
 import { useLocation } from "react-router-dom";
 import api from "../services/api";
 
@@ -10,22 +10,22 @@ function Profile() {
   const [starredSkills, setStarredSkills] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Fungsi fetch data profil, extracted skills, dan starred skills
   const fetchProfileData = async (userData) => {
     if (!userData?.uid) return;
 
     try {
       const [skillsetResponse, pathwayResponse] = await Promise.all([
-        api.get("/profile/skillset"),          
+        api.get(`/profile/skillset?userId=${userData.uid}`), // Ditambahkan query userId 🎯          
         api.get(`/pathway/${userData.uid}`)    
       ]);
 
-      // Handle Extracted Skills
-      if (skillsetResponse.data) {
-        const fetchedSkills = skillsetResponse.data.skills || skillsetResponse.data.data?.skills || [];
+      if (skillsetResponse.data && skillsetResponse.data.status === "ok") {
+        const fetchedSkills = skillsetResponse.data.data?.skills || skillsetResponse.data.skills || [];
         setExtractedSkills(fetchedSkills);
       }
 
-      // FIX DI SINI: Menggunakan nama variabel pathwayResponse yang benar 🎯
+      // ✅ SUDAH DIPERBAIKI: Mengubah 'response.data' menjadi 'pathwayResponse.data'
       if (pathwayResponse.data) {
         const dataArray = Array.isArray(pathwayResponse.data) 
           ? pathwayResponse.data 
@@ -34,7 +34,6 @@ function Profile() {
       } else {
         setStarredSkills([]);
       }
-
     } catch (error) {
       console.error("Gagal memuat data profile dari backend:", error);
       setStarredSkills([]);
@@ -54,16 +53,19 @@ function Profile() {
     }
   }, [location]); 
 
-  // Fungsi mengubah status skill (learning <-> completed)
+  // ================= FUNGSI PATCH STATUS COMPLETED =================
   const handleToggleStatus = async (pathwayId, currentStatus) => {
+    // Tentukan target status berikutnya, jika sudah completed bisa ditoggle balik ke 'learning' atau sebaliknya
     const nextStatus = currentStatus === "completed" ? "learning" : "completed";
 
     try {
+      // Hit endpoint PATCH /api/v1/pathway/{id}/status sesuai gambar image_708dde.png
       const response = await api.patch(`/pathway/${pathwayId}/status`, {
-        status: nextStatus 
+        status: nextStatus // Mengirim body JSON { "status": "completed" }
       });
 
       if (response.status === 200 || response.data?.success) {
+        // Update state lokal secara real-time agar UI langsung berubah tanpa reload halaman ⚡
         setStarredSkills((prevSkills) =>
           prevSkills.map((item) =>
             item.id === pathwayId ? { ...item, status: nextStatus } : item
@@ -72,6 +74,7 @@ function Profile() {
       }
     } catch (err) {
       console.error("Gagal memperbarui status skill:", err);
+      alert(err.response?.data?.message || "Gagal memperbarui status skill.");
     }
   };
 
@@ -99,7 +102,7 @@ function Profile() {
         </div>
       </section>
 
-      {/* LOADING / UI CONTAINER */}
+      {/* TAMPILAN LOADING UTAMA */}
       {isLoading ? (
         <div className="min-h-[300px] flex flex-col items-center justify-center gap-2 bg-slate-50/50 rounded-2xl border border-slate-100">
           <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
@@ -107,7 +110,7 @@ function Profile() {
         </div>
       ) : (
         <>
-          {/* BAGIAN 1: EXTRACTED SKILLSET */}
+          {/* BAGIAN 1: EXTRACTED SKILLSET (DARI RESUME) */}
           <section className="space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -154,7 +157,7 @@ function Profile() {
                 starredSkills.map((item, i) => {
                   const skillName = typeof item === "object" ? item.skill_name : item;
                   const targetRole = item?.target_role || "General Path";
-                  const isCompleted = item?.status === "completed";
+                  const isCompleted = item?.status === "completed"; // Deteksi status
 
                   return (
                     <div 
@@ -171,6 +174,7 @@ function Profile() {
                             <Star className={`w-4 h-4 ${isCompleted ? "fill-emerald-600" : "fill-current"}`} />
                           </div>
                           
+                          {/* TOMBOL CHECKLIST UNTUK UPDATE STATUS KE BACKEND 🚀 */}
                           <button
                             onClick={() => handleToggleStatus(item.id, item.status)}
                             className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-200 border ${
@@ -178,10 +182,11 @@ function Profile() {
                                 ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100" 
                                 : "bg-white text-slate-400 border-slate-200 hover:text-emerald-600 hover:border-emerald-300 hover:bg-emerald-50"
                             }`}
+                            title={isCompleted ? "Tandai Belum Selesai" : "Tandai Sudah Selesai"}
                           >
                             {isCompleted ? (
                               <>
-                                <CheckCircle className="w-3.5 h-3.5 fill-emerald-200 text-emerald-600" />
+                                <CheckCircle className="w-3.5 h-3.5 fill-emerald-200 text-emerald-600 animate-in zoom-in duration-150" />
                                 <span>Done</span>
                               </>
                             ) : (
@@ -203,7 +208,7 @@ function Profile() {
                             Target: {targetRole}
                           </p>
                           <p className={`text-xs font-semibold mt-2 ${isCompleted ? "text-emerald-600" : "text-amber-600"}`}>
-                            Status: {isCompleted ? "Selesai Dipelajari 🎉" : "Sedang Dipelajari"}
+                            Status: {isCompleted ? "Selesai Dipelajari" : "Sedang Dipelajari"}
                           </p>
                         </div>
                       </div>
