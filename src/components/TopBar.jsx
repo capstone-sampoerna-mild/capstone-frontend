@@ -1,16 +1,26 @@
-import { Search, Bell, Sparkles, LogOut, Menu } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { LogOut, Menu } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { signOut } from "firebase/auth";
 import { auth } from "../services/firebase";
 
-const storedUser = JSON.parse(localStorage.getItem("user"));
-const user = storedUser?.data?.user;
-
-// Menerima props isOpen dan setIsOpen dari MainLayout
-if (typeof storedUser === 'undefined') { /* safety check */ }
-
 function TopBar({ isOpen, setIsOpen }) {
   const navigate = useNavigate();
+  const location = useLocation(); // Mendeteksi perpindahan halaman
+  const [user, setUser] = useState(null);
+
+  // Fungsi untuk mengambil data user terbaru dari localStorage
+  const loadUserData = () => {
+    const storedUser = JSON.parse(localStorage.getItem("user"));
+    // Menyesuaikan fleksibilitas struktur data dari backend kamu
+    const userData = storedUser?.data?.user || storedUser?.user || storedUser;
+    setUser(userData);
+  };
+
+  // Efek berjalan setiap kali komponen muncul ATAU setiap kali user pindah halaman
+  useEffect(() => {
+    loadUserData();
+  }, [location]);
 
   const handleLogout = async () => {
     try {
@@ -28,7 +38,7 @@ function TopBar({ isOpen, setIsOpen }) {
 
       {/* Bagian Kiri: Tombol Menu + Welcome Message */}
       <div className="flex items-center space-x-4">
-        {/* TOMBOL TOGGLE SIDEBAR (Rapi & Sejajar) */}
+        {/* TOMBOL TOGGLE SIDEBAR */}
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="p-2 rounded-xl border border-slate-200 bg-white shadow-sm hover:bg-slate-100 transition-all text-slate-700"
@@ -45,21 +55,13 @@ function TopBar({ isOpen, setIsOpen }) {
         </h2>
       </div>
 
-      {/* Bagian Kiri Sekunder untuk HP (Biar teks welcome ringkas tidak menumpuk) */}
+      {/* Bagian Kiri Sekunder untuk HP */}
       <h2 className="text-lg font-bold sm:hidden block absolute left-16">
         Hi, <span className="text-indigo-500">{user?.name?.split(" ")[0] || "User"}</span>
       </h2>
 
       {/* Right section */}
       <div className="flex items-center space-x-3 md:space-x-4">
-
-        {/* AI Feature
-        <Link
-          to="/chat"
-          className="p-2 hover:bg-slate-200/50 rounded-full transition-all"
-        >
-          <Sparkles className="w-4 h-4 text-indigo-500" />
-        </Link> */}
 
         {/* Logout */}
         <button
@@ -69,14 +71,21 @@ function TopBar({ isOpen, setIsOpen }) {
           <LogOut className="w-4 h-4 text-red-500 group-hover:scale-110 transition-transform" />
         </button>
 
-        {/* Profile */}
-        <div className="h-8 w-8 rounded-full overflow-hidden ring-2 ring-indigo-200 cursor-pointer shrink-0">
-          <img
-            src={user?.picture}
-            alt="User profile"
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-          />
+        {/* Profile Image */}
+        <div className="h-8 w-8 rounded-full overflow-hidden ring-2 ring-indigo-200 cursor-pointer shrink-0 bg-indigo-50 flex items-center justify-center">
+          {user?.picture ? (
+            <img
+              src={user.picture}
+              alt="User profile"
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            // Fallback inisial huruf jika gambar google telat dimuat
+            <span className="text-xs font-bold text-indigo-600">
+              {user?.name?.substring(0, 1).toUpperCase() || "U"}
+            </span>
+          )}
         </div>
 
       </div>

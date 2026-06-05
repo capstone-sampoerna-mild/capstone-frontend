@@ -1,20 +1,24 @@
 import React, { useState, useEffect } from "react";
 import { Mail, Code2, Loader2 } from "lucide-react";
+import { useLocation } from "react-router-dom";
 import api from "../services/api";
 
 function Profile() {
+  const location = useLocation(); // Untuk memicu render ulang saat pindah halaman
   const [profileData, setProfileData] = useState(null);
+  const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Ambil data user dasar dari localStorage untuk fallback header
-  const storedUser = JSON.parse(localStorage.getItem("user"));
-  const userAuth = storedUser?.user || storedUser;
-
   useEffect(() => {
+    // 1. Ambil data lokal dari localStorage tiap kali masuk halaman
+    const storedUser = JSON.parse(localStorage.getItem("user"));
+    const userData = storedUser?.data?.user || storedUser?.user || storedUser;
+    setUser(userData);
+
     const fetchProfileData = async () => {
       try {
         setIsLoading(true);
-        // Tembak endpoint profile ke Backend Express kamu
+        // 2. Ambil data dinamis (skills) dari Backend
         const response = await api.get("/auth/profile"); 
         setProfileData(response.data.data || response.data);
       } catch (error) {
@@ -25,9 +29,8 @@ function Profile() {
     };
 
     fetchProfileData();
-  }, []);
+  }, [location]); // 🚀 Berjalan otomatis setiap kali pindah ke halaman profile
 
-  const user = profileData?.user || userAuth;
   // Menampung array skills hasil ekstraksi dari database nantinya
   const extractedSkills = profileData?.skills || ["React", "UI/UX", "AI Tools", "Tailwind", "Node.js", "Express", "PostgreSQL"];
 
@@ -44,9 +47,9 @@ function Profile() {
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
       
-      {/* HEADER PROFILE (MINIMALIS) */}
+      {/* HEADER PROFILE (MINIMALIS & SEGERA MUNCUL) */}
       <section className="bg-white rounded-2xl p-8 flex flex-col sm:flex-row items-center gap-6 shadow-sm border border-slate-100">
-        {/* Avatar (Tombol pensil sudah dihapus) */}
+        {/* Avatar */}
         <div className="relative shrink-0">
           <img
             src={user?.picture || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"}
@@ -55,17 +58,19 @@ function Profile() {
           />
         </div>
 
-        {/* Info Nama & Email (Role, Lokasi, dan Portofolio sudah dihapus) */}
+        {/* Info Nama & Email */}
         <div className="flex-1 text-center sm:text-left space-y-2">
-          <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">{user?.name}</h2>
+          <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+            {user?.name || "User Name"}
+          </h2>
           <div className="flex items-center justify-center sm:justify-start gap-2 text-sm text-slate-500">
             <Mail className="w-4 h-4 text-indigo-500" /> 
-            <span>{user?.email}</span>
+            <span>{user?.email || "loading email..."}</span>
           </div>
         </div>
       </section>
 
-      {/* SKILLS CONTAINER (Diubah menjadi layout Grid Card yang penuh & estetik) */}
+      {/* SKILLS CONTAINER */}
       <section className="space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -77,7 +82,7 @@ function Profile() {
           </span>
         </div>
 
-        {/* Grid System untuk mengubah badge menjadi Card */}
+        {/* Grid System */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
           {extractedSkills.length > 0 ? (
             extractedSkills.map((skill, i) => {
