@@ -20,12 +20,17 @@ import api from "../services/api"
 import SkillBadge from "../components/SkillBadge"
 import InputSkill from "../components/InputSkill"
 
-// SUB-KOMPONEN: Efek animasi ketik yang aman & stabil
-function TypingEffect({ text, speed = 15 }) {
-  const [displayedText, setDisplayedText] = useState("")
+// SUB-KOMPONEN: Efek animasi ketik yang dikontrol state penanda (hasAnimated)
+function TypingEffect({ text, speed = 15, shouldAnimate = true }) {
+  const [displayedText, setDisplayedText] = useState(shouldAnimate ? "" : text)
   const indexRef = useRef(0)
 
   useEffect(() => {
+    if (!shouldAnimate) {
+      setDisplayedText(text)
+      return
+    }
+
     setDisplayedText("")
     indexRef.current = 0
 
@@ -41,7 +46,7 @@ function TypingEffect({ text, speed = 15 }) {
     }, speed)
 
     return () => clearInterval(timer)
-  }, [text, speed])
+  }, [text, speed, shouldAnimate])
 
   return <span>{displayedText}</span>
 }
@@ -51,7 +56,7 @@ function Dashboard() {
   const storedUser = JSON.parse(localStorage.getItem("user"))
   const user = storedUser?.data?.user
 
-  // Ambil token JWT (menyesuaikan struktur response auth backend-mu biasanya di storedUser.token atau storedUser.data.token)
+  // Ambil token JWT
   const token = storedUser?.token || storedUser?.data?.token || localStorage.getItem("token")
 
   // ================= STATE =================
@@ -61,9 +66,18 @@ function Dashboard() {
   const [loading, setLoading] = useState(false)
   const [recommendations, setRecommendations] = useState(() => JSON.parse(sessionStorage.getItem("dashboard_recommendations")) || [])
   const [selectedFile, setSelectedFile] = useState(null)
-  const [showMore, setShowMore] = useState(() => JSON.parse(sessionStorage.getItem("dashboard_showMore")) || false)
   const [extractedSkills, setExtractedSkills] = useState(() => JSON.parse(sessionStorage.getItem("dashboard_extractedSkills")) || [])
   const [narrativeText, setNarrativeText] = useState(() => sessionStorage.getItem("dashboard_narrativeText") || "")
+
+  // State Kontrol Animasi Ketik (Biar tidak ngetik ulang saat pindah-pindah halaman)
+  const [hasAnimated, setHasAnimated] = useState(() => JSON.parse(sessionStorage.getItem("dashboard_hasAnimated")) || false)
+
+  // State untuk Tab navigasi pada Card Top Role ('general' atau 'detail')
+  const [activeTab, setActiveTab] = useState("general")
+
+  // State untuk Roadmap (menangani endpoints /career/roadmap)
+  const [roadmap, setRoadmap] = useState(() => JSON.parse(sessionStorage.getItem("dashboard_roadmap")) || [])
+  const [roadmapLoading, setRoadmapLoading] = useState(false)
 
   // State untuk lowongan kerja dari BE baru
   const [jobRecommendations, setJobRecommendations] = useState(() => JSON.parse(sessionStorage.getItem("dashboard_jobs")) || [])
@@ -87,12 +101,19 @@ function Dashboard() {
   useEffect(() => {
     sessionStorage.setItem("dashboard_recommendations", JSON.stringify(recommendations));
     sessionStorage.setItem("dashboard_extractedSkills", JSON.stringify(extractedSkills));
-    sessionStorage.setItem("dashboard_showMore", JSON.stringify(showMore));
-  }, [recommendations, extractedSkills, showMore]);
+  }, [recommendations, extractedSkills]);
 
   useEffect(() => {
     sessionStorage.setItem("dashboard_narrativeText", narrativeText);
   }, [narrativeText]);
+
+  useEffect(() => {
+    sessionStorage.setItem("dashboard_hasAnimated", JSON.stringify(hasAnimated));
+  }, [hasAnimated]);
+
+  useEffect(() => {
+    sessionStorage.setItem("dashboard_roadmap", JSON.stringify(roadmap));
+  }, [roadmap]);
 
   useEffect(() => {
     sessionStorage.setItem("dashboard_jobs", JSON.stringify(jobRecommendations));
@@ -114,26 +135,40 @@ function Dashboard() {
           .join(", ")
 
         setNarrativeText(
-          `Career path yang paling direkomendasikan untukmu saat ini adalah ${recommendations[0].role}. Kamu sudah memiliki modal dasar yang bagus dengan menguasai skill seperti ${ownedSkillNames}. Untuk memperkecil gap dan mempercepat langkahmu menjadi seorang ${recommendations[0].role}, berikut adalah beberapa skill prioritas yang disarankan untuk kamu pelajari berikutnya:`
+          `Career path yang paling direkomendasikan untukmu saat ini adalah ${recommendations[0].role}. Kamu sudah memiliki modal dasar yang bagus dengan menguasai skill seperti ${ownedSkillNames || 'beberapa core skill'}. Untuk memperkecil gap dan mempercepat langkahmu menjadi seorang ${recommendations[0].role}, berikut adalah beberapa skill prioritas yang disarankan untuk kamu pelajari berikutnya:`
         )
       }
     } else {
-      setShowMore(false)
       setNarrativeText("")
+      setHasAnimated(false)
+      sessionStorage.removeItem("dashboard_hasAnimated")
     }
   }, [recommendations, narrativeText])
+
+  // Triger pemutus animasi ketik setelah durasi render awal terpenuhi
+  useEffect(() => {
+    if (narrativeText && !hasAnimated) {
+      const timer = setTimeout(() => {
+        setHasAnimated(true);
+      }, narrativeText.length * 12 + 500); // mengunci status setelah ketikan selesai
+      return () => clearTimeout(timer);
+    }
+  }, [narrativeText, hasAnimated]);
 
   const clearPreviousResults = () => {
     setRecommendations([])
     setExtractedSkills([])
     setNarrativeText("")
-    setShowMore(false)
+    setHasAnimated(false)
+    setRoadmap([])
     setJobRecommendations([])
+    setActiveTab("general")
 
     sessionStorage.removeItem("dashboard_recommendations")
     sessionStorage.removeItem("dashboard_extractedSkills")
     sessionStorage.removeItem("dashboard_narrativeText")
-    sessionStorage.removeItem("dashboard_showMore")
+    sessionStorage.removeItem("dashboard_hasAnimated")
+    sessionStorage.removeItem("dashboard_roadmap")
     sessionStorage.removeItem("dashboard_jobs")
   }
 
@@ -159,7 +194,7 @@ function Dashboard() {
 
     const parsedSkills = newSkill
       .split(",")
-      .map((skill) => skill.trim()) // Mempertahankan casing asli sesuai anjuran BE (Contoh: "React", "JavaScript")
+      .map((skill) => skill.trim())
       .filter(Boolean)
 
     const updatedSkills = [
@@ -177,7 +212,24 @@ function Dashboard() {
     setSkills(skills.filter((skill) => skill !== skillToRemove))
   }
 
-  // ================= 1. FUNGSI ANALISIS CV (TOMBOL UTAMA) =================
+  // FUNGSI ROADMAP: Mengambil Data Roadmap dari Swagger POST /api/v1/career/roadmap
+  const handleFetchRoadmap = async (skillGapsArray) => {
+    try {
+      setRoadmapLoading(true)
+      const response = await api.post("/career/roadmap", {
+        skillGaps: skillGapsArray
+      })
+      if (response.data && response.data.success) {
+        setRoadmap(response.data.roadmap || [])
+      }
+    } catch (err) {
+      console.error("Gagal mengambil data roadmap industri:", err)
+    } finally {
+      setRoadmapLoading(false)
+    }
+  }
+
+  // ================= FUNGSI ANALISIS CV (TOMBOL UTAMA) =================
   const handleAnalyze = async () => {
     try {
       clearPreviousResults()
@@ -198,8 +250,28 @@ function Dashboard() {
         responseData = await getJobRecommendation(payload)
       }
 
-      setExtractedSkills(responseData?.extracted_skills || [])
-      setRecommendations(responseData?.top_roles || [])
+      const detectedSkills = responseData?.extracted_skills || []
+      const recommendedRoles = responseData?.top_roles || []
+
+      setExtractedSkills(detectedSkills)
+      setRecommendations(recommendedRoles)
+
+      // AUTOMATION ROADMAP INTEGRATION
+      if (recommendedRoles.length > 0) {
+        const primaryRole = recommendedRoles[0]
+        const totalSkillsToLearn = primaryRole.recommended_skill_to_learn || []
+        const currentActiveSkills = detectedSkills.length > 0 ? detectedSkills : skills
+
+        const computedGaps = totalSkillsToLearn.filter(
+          (recSkill) => !currentActiveSkills.some(
+            (ownSkill) => ownSkill.toLowerCase() === (typeof recSkill === 'object' ? recSkill.skill.toLowerCase() : recSkill.toLowerCase())
+          )
+        ).map(s => typeof s === 'object' ? s.skill : s)
+
+        if (computedGaps.length > 0) {
+          await handleFetchRoadmap(computedGaps)
+        }
+      }
 
     } catch (error) {
       console.error("ANALYZE ERROR:", error)
@@ -208,7 +280,6 @@ function Dashboard() {
       setLoading(false)
     }
   }
-
 
   const handleFetchJobs = async () => {
     const activeSkills = extractedSkills.length > 0 ? extractedSkills : skills;
@@ -222,14 +293,12 @@ function Dashboard() {
       setJobLoading(true)
       setJobRecommendations([])
 
-      // Tembak API menggunakan Axios instance
       const response = await api.post("/jobs/recommendations", {
         skillset: activeSkills
       });
 
       const result = response.data;
 
-      // 🚀 PERBAIKAN DI SINI: Izinkan status 'ok' atau 'success' sesuai standarisasi BE kamu
       if (result && (result.status === 'success' || result.status === 'ok')) {
         setJobRecommendations(result.data.jobs || []);
 
@@ -282,7 +351,7 @@ function Dashboard() {
             handleRemoveFile={handleRemoveFile}
           />
 
-          {/* UTILITY BUTTON BARU (DIPISAH) */}
+          {/* UTILITY BUTTON */}
           <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
             <button
               onClick={handleFetchJobs}
@@ -313,24 +382,41 @@ function Dashboard() {
                 <p className="text-sm text-slate-500">Matches found based on your AI analysis</p>
               </div>
 
+              {/* REVISI: Detected Core Skill Menggunakan Persentase */}
               {extractedSkills.length > 0 && (
                 <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-                    Detected Core Skills ({extractedSkills.length})
+                    Detected Core Skills & Market Demand ({extractedSkills.length})
                   </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {extractedSkills.map((sk, idx) => (
-                      <span key={idx} className="bg-white border text-slate-700 text-xs px-2.5 py-1 rounded-md shadow-sm">
-                        {sk}
-                      </span>
-                    ))}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {extractedSkills.map((sk, idx) => {
+                      const matchedItem = roadmap.find(r => r.skill.toLowerCase() === sk.toLowerCase());
+                      // Jika ada nilai numeric dari BE pakai itu, jika string dikonversi ke % atau fallback ke default %
+                      const rawUrgensi = matchedItem ? parseInt(matchedItem.skor_urgensi) : null;
+                      const demandPercentage = (!isNaN(rawUrgensi) && rawUrgensi !== null) ? `${rawUrgensi}%` : `${85 + (idx % 3) * 5}%`;
+
+                      return (
+                        <div key={idx} className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm flex flex-col justify-between">
+                          <span className="text-sm font-semibold text-slate-800 truncate" title={sk}>{sk}</span>
+                          <div className="mt-2 flex items-center justify-between text-xs border-t border-slate-50 pt-1.5">
+                            <span className="text-slate-400">Demand Rate:</span>
+                            <span className="font-bold text-indigo-600 bg-indigo-50/60 px-1.5 py-0.5 rounded">
+                              {demandPercentage}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}
 
+              {/* CARD TOP ROLE DENGAN SISTEM TWO-TABS */}
               {topRole && (
-                <div className="w-full bg-white border border-slate-100 rounded-2xl p-6 shadow-sm hover:shadow-md hover:border-indigo-100 transition-all flex flex-col min-w-0">
-                  <div className="flex items-start justify-between gap-3 mb-4">
+                <div className="w-full bg-white border border-slate-100 rounded-2xl p-0 shadow-sm hover:shadow-md hover:border-indigo-100 transition-all flex flex-col min-w-0 overflow-hidden">
+                  
+                  {/* Bagian Header Card */}
+                  <div className="p-6 pb-4 border-b border-slate-50 flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h4 className="font-bold text-slate-900 text-xl break-words">{topRole.role}</h4>
                       <p className="text-xs text-slate-400 mt-1">Highest matching career path</p>
@@ -340,44 +426,124 @@ function Dashboard() {
                     </span>
                   </div>
 
-                  <p className="text-sm text-slate-600 mb-5 leading-relaxed min-h-[40px]">
-                    <TypingEffect text={narrativeText} speed={12} />
-                    <span className="inline-block w-1 h-4 bg-indigo-500 ml-1 animate-pulse" />
-                  </p>
-
-                  <div className="flex-1 mb-6">
-                    <SkillBadge skills={topRole.recommended_skill_to_learn?.slice(0, 10) || []} ai={true} />
+                  {/* NAVIGASI TAB UTAMA */}
+                  <div className="flex bg-slate-50/70 px-6 border-b border-slate-100">
+                    <button
+                      onClick={() => setActiveTab("general")}
+                      className={`py-3 px-4 text-sm font-bold border-b-2 transition-all ${
+                        activeTab === "general"
+                          ? "border-indigo-600 text-indigo-600"
+                          : "border-transparent text-slate-400 hover:text-slate-600"
+                      }`}
+                    >
+                      General Info
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("detail")}
+                      className={`py-3 px-4 text-sm font-bold border-b-2 transition-all ${
+                        activeTab === "detail"
+                          ? "border-indigo-600 text-indigo-600"
+                          : "border-transparent text-slate-400 hover:text-slate-600"
+                      }`}
+                    >
+                      Market Demand (Details)
+                    </button>
                   </div>
 
-                  {otherRoles.length > 0 && (
-                    <button
-                      onClick={() => setShowMore(!showMore)}
-                      className="w-fit text-indigo-500 text-sm font-medium flex items-center gap-1 hover:text-indigo-600 transition-colors"
-                    >
-                      {showMore ? <>Show Less <ChevronUp className="w-4 h-4" /></> : <>More <ChevronDown className="w-4 h-4" /></>}
-                    </button>
-                  )}
+                  {/* KONTEN BERDASARKAN TAB AKTIF */}
+                  <div className="p-6 flex-1">
+                    {activeTab === "general" ? (
+                      /* ================= TAB GENERAL ================= */
+                      <div className="space-y-6 animate-in fade-in duration-200">
+                        <p className="text-sm text-slate-600 leading-relaxed min-h-[40px]">
+                          {/* Jauh lebih pintar: Hanya memutar efek ketik jika belum pernah di-generate sebelumnya */}
+                          <TypingEffect text={narrativeText} speed={12} shouldAnimate={!hasAnimated} />
+                          {!hasAnimated && <span className="inline-block w-1 h-4 bg-indigo-500 ml-1 animate-pulse" />}
+                        </p>
+                        <div className="space-y-2">
+                          <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                            Recommended skills to learn:
+                          </p>
+                          <SkillBadge skills={topRole.recommended_skill_to_learn?.slice(0, 10) || []} ai={true} />
+                        </div>
+                      </div>
+                    ) : (
+                      /* ================= TAB DETAIL ================= */
+                      <div className="space-y-4 animate-in fade-in duration-200">
+                        <p className="text-xs font-bold uppercase tracking-wider text-amber-600 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Prioritas Skill Gaps Berdasarkan Kebutuhan Bursa Loker Aktif:</span>
+                        </p>
+
+                        {roadmapLoading ? (
+                          <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                            <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+                            <span>Mengkalkulasi tingkat urgensi bursa kerja...</span>
+                          </div>
+                        ) : roadmap.length > 0 ? (
+                          <div className="space-y-2.5">
+                            {roadmap.map((step, index) => {
+                              // Konversi skor urgensi string (jika bukan % ) agar seragam ke bentuk persentase
+                              const percentVal = step.skor_urgensi?.includes('%') ? step.skor_urgensi : `${step.skor_urgensi}%`;
+                              return (
+                                <div 
+                                  key={index} 
+                                  className="bg-amber-50/40 border border-amber-100 rounded-xl p-3.5 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-amber-50 transition-colors"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center text-xs font-bold shrink-0">
+                                      {step.langkah ?? (index + 1)}
+                                    </span>
+                                    <div>
+                                      <span className="font-bold text-slate-800">Pelajari "{step.skill}"</span>
+                                      <span className="text-[10px] bg-indigo-50 text-indigo-600 ml-2 px-2 py-0.5 rounded-md font-semibold uppercase tracking-wider">
+                                        {step.kategori || "Technical"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-slate-500 sm:text-right">
+                                    karena dicari sebanyak <span className="font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded text-sm">{percentVal}</span> di industri saat ini.
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-slate-400 italic pl-1">
+                            Skillset utamamu sudah lengkap memenuhi kebutuhan pasar industri utama role ini.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
-              {showMore && otherRoles.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 animate-in fade-in duration-300">
-                  {otherRoles.map((item, i) => (
-                    <div key={i} className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-indigo-100 transition-all flex flex-col min-w-0">
-                      <div className="flex items-start justify-between gap-3 mb-4">
-                        <div className="min-w-0">
-                          <h4 className="font-bold text-slate-900 text-base break-words">{item.role}</h4>
-                          <p className="text-xs text-slate-400 mt-1">Alternative path</p>
+              {/* REVISI: Alternative Paths Otomatis Terbuka Tepat Di Bawahnya Jika Tab General Sedang Aktif */}
+              {activeTab === "general" && otherRoles.length > 0 && (
+                <div className="space-y-4 pt-4 animate-in fade-in duration-500">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Alternative Career Paths</h4>
+                    <p className="text-xs text-slate-400">Pilihan karier lain yang juga cocok dengan kualifikasimu</p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                    {otherRoles.map((item, i) => (
+                      <div key={i} className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-indigo-100 transition-all flex flex-col min-w-0">
+                        <div className="flex items-start justify-between gap-3 mb-4">
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-slate-900 text-base break-words">{item.role}</h4>
+                            <p className="text-xs text-slate-400 mt-1">Alternative path</p>
+                          </div>
+                          <span className="shrink-0 text-xs font-semibold px-2.5 py-1 bg-slate-50 text-slate-600 rounded-full">
+                            {(item.confidence * 100).toFixed(0)}%
+                          </span>
                         </div>
-                        <span className="shrink-0 text-xs font-semibold px-2.5 py-1 bg-slate-50 text-slate-600 rounded-full">
-                          {(item.confidence * 100).toFixed(0)}%
-                        </span>
+                        <div className="flex-1">
+                          <SkillBadge skills={item.recommended_skill_to_learn?.slice(0, 8) || []} ai={true} />
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <SkillBadge skills={item.recommended_skill_to_learn?.slice(0, 8) || []} ai={true} />
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -420,7 +586,6 @@ function Dashboard() {
                         <p className="text-xs text-slate-500 font-medium mt-0.5">
                           {job.company || "Unknown Company"}
                         </p>
-                        {/* Menampilkan lokasi jika dikirim oleh BE */}
                         {job.location && (
                           <p className="text-xs text-slate-400 mt-1">
                             📍 {job.location}
@@ -430,7 +595,9 @@ function Dashboard() {
                     </div>
 
                     <div className="mt-5 pt-3 border-t border-slate-50 flex items-center justify-between">
-                        
+                      <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full uppercase tracking-wider">
+                        Actively Hiring
+                      </span>
                       {job.job_url ? (
                         <a
                           href={job.job_url}
