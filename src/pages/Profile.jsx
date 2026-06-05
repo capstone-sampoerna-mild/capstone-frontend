@@ -1,49 +1,85 @@
 import React, { useState, useEffect } from "react";
-import { Mail, Code2, Loader2 } from "lucide-react";
+import { Mail, Star, Loader2, Code2, CheckCircle, Circle } from "lucide-react"; 
 import { useLocation } from "react-router-dom";
 import api from "../services/api";
 
 function Profile() {
-  const location = useLocation(); // Untuk memicu render ulang saat pindah halaman
-  const [skills, setSkills] = useState([]);
+  const location = useLocation(); 
   const [user, setUser] = useState(null);
+  const [extractedSkills, setExtractedSkills] = useState([]); 
+  const [starredSkills, setStarredSkills] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const fetchProfileData = async (userData) => {
+    if (!userData?.uid) return;
+
+    try {
+      const [skillsetResponse, pathwayResponse] = await Promise.all([
+        api.get("/profile/skillset"),          
+        api.get(`/pathway/${userData.uid}`)    
+      ]);
+
+      // Handle Extracted Skills
+      if (skillsetResponse.data) {
+        const fetchedSkills = skillsetResponse.data.skills || skillsetResponse.data.data?.skills || [];
+        setExtractedSkills(fetchedSkills);
+      }
+
+      // FIX DI SINI: Menggunakan nama variabel pathwayResponse yang benar 🎯
+      if (pathwayResponse.data) {
+        const dataArray = Array.isArray(pathwayResponse.data) 
+          ? pathwayResponse.data 
+          : (pathwayResponse.data.data || []);
+        setStarredSkills(dataArray);
+      } else {
+        setStarredSkills([]);
+      }
+
+    } catch (error) {
+      console.error("Gagal memuat data profile dari backend:", error);
+      setStarredSkills([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    // 1. Ambil data lokal dari localStorage tiap kali masuk halaman
     const storedUser = JSON.parse(localStorage.getItem("user"));
     const userData = storedUser?.data?.user || storedUser?.user || storedUser;
     setUser(userData);
 
-    const fetchSkillsetData = async () => {
-      try {
-        setIsLoading(true);
-        // 2. HIT ENDPOINT BARU DARI BACKEND
-        const response = await api.get("/profile/skillset"); 
-        
-        // Sesuaikan dengan struktur response JSON backend: response.data.data.skills
-        if (response.data && response.data.data && response.data.data.skills) {
-          setSkills(response.data.data.skills);
-        } else {
-          setSkills([]);
-        }
-      } catch (error) {
-        console.error("Gagal memuat data Skillset dari BE:", error);
-        setSkills([]); // Amankan dengan array kosong jika request gagal
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    if (userData) {
+      setIsLoading(true);
+      fetchProfileData(userData);
+    }
+  }, [location]); 
 
-    fetchSkillsetData();
-  }, [location]); // Berjalan otomatis setiap kali pindah ke halaman profile
+  // Fungsi mengubah status skill (learning <-> completed)
+  const handleToggleStatus = async (pathwayId, currentStatus) => {
+    const nextStatus = currentStatus === "completed" ? "learning" : "completed";
+
+    try {
+      const response = await api.patch(`/pathway/${pathwayId}/status`, {
+        status: nextStatus 
+      });
+
+      if (response.status === 200 || response.data?.success) {
+        setStarredSkills((prevSkills) =>
+          prevSkills.map((item) =>
+            item.id === pathwayId ? { ...item, status: nextStatus } : item
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Gagal memperbarui status skill:", err);
+    }
+  };
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
       
       {/* HEADER PROFILE */}
       <section className="bg-white rounded-2xl p-8 flex flex-col sm:flex-row items-center gap-6 shadow-sm border border-slate-100">
-        {/* Avatar */}
         <div className="relative shrink-0">
           <img
             src={user?.picture || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"}
@@ -52,7 +88,6 @@ function Profile() {
           />
         </div>
 
-        {/* Info Nama & Email */}
         <div className="flex-1 text-center sm:text-left space-y-2">
           <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
             {user?.name || "User Name"}
@@ -64,70 +99,126 @@ function Profile() {
         </div>
       </section>
 
-      {/* SKILLS CONTAINER */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <Code2 className="w-5 h-5 text-indigo-500" />
-            <span>Extracted Core Skills</span>
-          </h3>
-          <span className="text-xs font-semibold bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full">
-            Total {skills.length} Skills
-          </span>
+      {/* LOADING / UI CONTAINER */}
+      {isLoading ? (
+        <div className="min-h-[300px] flex flex-col items-center justify-center gap-2 bg-slate-50/50 rounded-2xl border border-slate-100">
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+          <p className="text-sm text-slate-500 font-medium">Memuat data profil kamu dari server...</p>
         </div>
+      ) : (
+        <>
+          {/* BAGIAN 1: EXTRACTED SKILLSET */}
+          <section className="space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Code2 className="w-5 h-5 text-indigo-500" />
+                <span>Extracted Skillset (Dari Resume Kamu)</span>
+              </h3>
+              <span className="text-xs font-semibold bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full border border-indigo-100">
+                Total {extractedSkills.length} Skill Terdeteksi
+              </span>
+            </div>
 
-        {/* Loading State Spinner Dalam Section Card */}
-        {isLoading ? (
-          <div className="min-h-[200px] flex flex-col items-center justify-center gap-2 bg-slate-50/50 rounded-2xl border border-slate-100">
-            <Loader2 className="w-7 h-7 animate-spin text-indigo-500" />
-            <p className="text-xs text-slate-500 font-medium">Fetching skills from server...</p>
-          </div>
-        ) : (
-          /* Grid System */
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {skills.length > 0 ? (
-              skills.map((skill, i) => {
-                const skillName = typeof skill === "object" ? skill.name : skill;
-                return (
-                  <div 
-                    key={i} 
-                    className="bg-white border border-slate-100 p-5 rounded-2xl shadow-sm hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between group"
+            <div className="flex flex-wrap gap-2.5">
+              {extractedSkills.length > 0 ? (
+                extractedSkills.map((skill, index) => (
+                  <span
+                    key={index}
+                    className="px-4 py-2 bg-white border border-slate-100 hover:border-indigo-200 text-slate-700 rounded-xl text-sm font-medium shadow-sm transition-all duration-150"
                   >
-                    <div className="space-y-1">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs group-hover:bg-indigo-500 group-hover:text-white transition-colors duration-200">
-                        {skillName.substring(0, 2).toUpperCase()}
-                      </div>
-                      <h4 className="font-bold text-slate-800 text-sm pt-2 truncate" title={skillName}>
-                        {skillName}
-                      </h4>
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-3 uppercase tracking-wider font-medium">
-                      Verified Skill
-                    </p>
-                  </div>
-                );
-              })
-            ) : (
-              /* Tampilan Jika Array Kosong [] */
-              <div className="col-span-full bg-white border border-dashed border-slate-200 p-12 rounded-2xl text-center shadow-sm">
-                <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Code2 className="w-5 h-5" />
+                    {skill}
+                  </span>
+                ))
+              ) : (
+                <div className="w-full py-6 text-center text-sm text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  Belum ada data skill ter-extract dari resume Anda. Silakan unggah resume terlebih dahulu.
                 </div>
-                <p className="text-sm text-slate-700 font-bold">Belum ada skill yang terdeteksi</p>
-                <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                  Silakan upload dokumen atau resume CV terbaru kamu di Dashboard terlebih dahulu untuk menganalisis skillset.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-      </section>
+              )}
+            </div>
+          </section>
 
-      {/* FOOTER */}
-      <footer className="text-center text-[11px] text-slate-400 pt-8 border-t border-slate-100">
-        © 2026 AI Skill & Career Pathway Analyzer
-      </footer>
+          {/* BAGIAN 2: STARRED SKILLS LEARNING PATHWAY */}
+          <section className="space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Star className="w-5 h-5 text-amber-500 fill-current" />
+                <span>Target Pembelajaran Skillset (Starred)</span>
+              </h3>
+              <span className="text-xs font-semibold bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full border border-amber-100">
+                Total {starredSkills.length} Target
+              </span>
+            </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {starredSkills.length > 0 ? (
+                starredSkills.map((item, i) => {
+                  const skillName = typeof item === "object" ? item.skill_name : item;
+                  const targetRole = item?.target_role || "General Path";
+                  const isCompleted = item?.status === "completed";
+
+                  return (
+                    <div 
+                      key={i} 
+                      className={`bg-white border p-5 rounded-2xl shadow-sm transition-all duration-200 flex flex-col justify-between group relative overflow-hidden ${
+                        isCompleted ? "border-emerald-200 bg-emerald-50/20" : "border-slate-100 hover:shadow-md hover:border-amber-200"
+                      }`}
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs transition-colors duration-200 ${
+                            isCompleted ? "bg-emerald-100 text-emerald-600" : "bg-amber-50 text-amber-600 group-hover:bg-amber-500 group-hover:text-white"
+                          }`}>
+                            <Star className={`w-4 h-4 ${isCompleted ? "fill-emerald-600" : "fill-current"}`} />
+                          </div>
+                          
+                          <button
+                            onClick={() => handleToggleStatus(item.id, item.status)}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-200 border ${
+                              isCompleted 
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100" 
+                                : "bg-white text-slate-400 border-slate-200 hover:text-emerald-600 hover:border-emerald-300 hover:bg-emerald-50"
+                            }`}
+                          >
+                            {isCompleted ? (
+                              <>
+                                <CheckCircle className="w-3.5 h-3.5 fill-emerald-200 text-emerald-600" />
+                                <span>Done</span>
+                              </>
+                            ) : (
+                              <>
+                                <Circle className="w-3.5 h-3.5" />
+                                <span>Mark Done</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        
+                        <div>
+                          <h4 className={`font-bold text-base transition-all duration-200 ${
+                            isCompleted ? "text-slate-400 line-through decoration-emerald-500/50" : "text-slate-800"
+                          }`}>
+                            {skillName}
+                          </h4>
+                          <p className="text-[10px] text-slate-400 font-medium italic truncate max-w-[200px] mt-1">
+                            Target: {targetRole}
+                          </p>
+                          <p className={`text-xs font-semibold mt-2 ${isCompleted ? "text-emerald-600" : "text-amber-600"}`}>
+                            Status: {isCompleted ? "Selesai Dipelajari 🎉" : "Sedang Dipelajari"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="col-span-full py-12 text-center text-sm text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  Belum ada skill rekomendasi yang kamu bintangi. Buka dashboard hasil analisa untuk menambahkan!
+                </div>
+              )}
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }

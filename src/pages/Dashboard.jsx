@@ -6,7 +6,8 @@ import {
   Briefcase,
   Building2,
   Loader2,
-  Search
+  Search,
+  Star
 } from "lucide-react"
 
 import { Link } from "react-router-dom"
@@ -60,6 +61,9 @@ function Dashboard() {
   const token = storedUser?.token || storedUser?.data?.token || localStorage.getItem("token")
 
   // ================= STATE =================
+  // TOAST FIX: Sekarang diletakkan dengan benar di dalam komponen utama! 🎯
+  const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+
   const [fileName, setFileName] = useState(() => sessionStorage.getItem("dashboard_fileName") || "")
   const [skills, setSkills] = useState(() => JSON.parse(sessionStorage.getItem("dashboard_skills")) || [])
   const [newSkill, setNewSkill] = useState("")
@@ -88,6 +92,14 @@ function Dashboard() {
 
   const topRole = recommendations[0]
   const otherRoles = recommendations.slice(1)
+
+  // TOAST FIX: Fungsi dipindahkan ke dalam agar bisa mengakses setToast
+  const showNotification = (message, type = "success") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast({ show: false, message: "", type: "success" });
+    }, 3000);
+  };
 
   // ================= EFFECTS FOR SESSION PERSISTENCE =================
   useEffect(() => {
@@ -150,7 +162,7 @@ function Dashboard() {
     if (narrativeText && !hasAnimated) {
       const timer = setTimeout(() => {
         setHasAnimated(true);
-      }, narrativeText.length * 12 + 500); // mengunci status setelah ketikan selesai
+      }, narrativeText.length * 12 + 500);
       return () => clearTimeout(timer);
     }
   }, [narrativeText, hasAnimated]);
@@ -229,6 +241,38 @@ function Dashboard() {
     }
   }
 
+  // ================= FUNGSI HANDLESAVE TO PATHWAY =================
+  const handleSaveSkillToPathway = async (skillName) => {
+    const actualUserId = user?.uid || (typeof storedUser === 'string' ? JSON.parse(storedUser)?.uid : storedUser?.uid);
+
+    if (!actualUserId) {
+      showNotification("Sesi user tidak valid. ID tidak ditemukan.", "error");
+      return;
+    }
+
+    try {
+      const response = await api.post("/pathway", {
+        user_id: actualUserId,
+        skill_name: skillName,
+        target_role: topRole?.role || "General Path"
+      });
+
+      if (response.status === 201 || response.data?.success) {
+        showNotification(`Skill "${skillName}" berhasil disimpan ke target pembelajaran profile!`, "success");
+
+        try {
+          const currentSkillGaps = roadmap && roadmap.length > 0 ? roadmap.map(item => item.skill) : [skillName];
+          await api.post("/career/roadmap", { skillGaps: currentSkillGaps });
+        } catch (roadmapErr) {
+          console.log("Abaikan jika optional:", roadmapErr);
+        }
+      }
+    } catch (err) {
+      console.error("Gagal menambahkan ke target pembelajaran:", err);
+      showNotification(err.response?.data?.message || "Gagal menambahkan skill.", "error");
+    }
+  };
+
   // ================= FUNGSI ANALISIS CV (TOMBOL UTAMA) =================
   const handleAnalyze = async () => {
     try {
@@ -275,7 +319,7 @@ function Dashboard() {
 
     } catch (error) {
       console.error("ANALYZE ERROR:", error)
-      alert("Failed to generate AI recommendation")
+      showNotification("Failed to generate AI recommendation", "error")
     } finally {
       setLoading(false)
     }
@@ -285,7 +329,7 @@ function Dashboard() {
     const activeSkills = extractedSkills.length > 0 ? extractedSkills : skills;
 
     if (activeSkills.length === 0) {
-      alert("Silakan masukkan skill atau lakukan analisis CV terlebih dahulu agar sistem bisa mencocokkan lowongan.");
+      showNotification("Silakan masukkan skill atau lakukan analisis CV terlebih dahulu.", "error");
       return;
     }
 
@@ -307,19 +351,19 @@ function Dashboard() {
         }, 100);
       } else {
         console.error('Gagal mengambil data:', result?.message);
-        alert(`Gagal memuat lowongan: ${result?.message || 'Error internal server'}`);
+        showNotification(`Gagal memuat lowongan: ${result?.message || 'Error internal server'}`, "error");
       }
     } catch (jobError) {
       console.error("Terjadi kesalahan koneksi/request:", jobError);
       const errorMsg = jobError.response?.data?.message || "Terjadi kesalahan koneksi ke server loker.";
-      alert(errorMsg);
+      showNotification(errorMsg, "error");
     } finally {
       setJobLoading(false)
     }
   }
 
   return (
-    <div className="w-full max-w-none space-y-12">
+    <div className="w-full max-w-none space-y-12 relative">
 
       {/* HEADER */}
       <header className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
@@ -350,27 +394,6 @@ function Dashboard() {
             handleRemoveSkill={handleRemoveSkill}
             handleRemoveFile={handleRemoveFile}
           />
-
-          {/* UTILITY BUTTON */}
-          <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
-            <button
-              onClick={handleFetchJobs}
-              disabled={jobLoading || loading}
-              className="w-full sm:w-auto bg-white border-2 border-indigo-600 text-indigo-600 font-bold px-6 py-3.5 rounded-xl flex items-center justify-center gap-2 hover:bg-indigo-50 transition-all disabled:opacity-50 disabled:pointer-events-none shadow-sm"
-            >
-              {jobLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Mencari Lowongan...</span>
-                </>
-              ) : (
-                <>
-                  <Search className="w-4 h-4" />
-                  <span>Cari Rekomendasi Lowongan Pekerjaan</span>
-                </>
-              )}
-            </button>
-          </div>
         </div>
 
         {/* AREA HASIL REKOMENDASI KARIER */}
@@ -382,7 +405,7 @@ function Dashboard() {
                 <p className="text-sm text-slate-500">Matches found based on your AI analysis</p>
               </div>
 
-              {/* REVISI: Detected Core Skill Menggunakan Persentase */}
+              {/* Detected Core Skill Menggunakan Persentase */}
               {extractedSkills.length > 0 && (
                 <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
@@ -391,7 +414,6 @@ function Dashboard() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                     {extractedSkills.map((sk, idx) => {
                       const matchedItem = roadmap.find(r => r.skill.toLowerCase() === sk.toLowerCase());
-                      // Jika ada nilai numeric dari BE pakai itu, jika string dikonversi ke % atau fallback ke default %
                       const rawUrgensi = matchedItem ? parseInt(matchedItem.skor_urgensi) : null;
                       const demandPercentage = (!isNaN(rawUrgensi) && rawUrgensi !== null) ? `${rawUrgensi}%` : `${85 + (idx % 3) * 5}%`;
 
@@ -414,8 +436,7 @@ function Dashboard() {
               {/* CARD TOP ROLE DENGAN SISTEM TWO-TABS */}
               {topRole && (
                 <div className="w-full bg-white border border-slate-100 rounded-2xl p-0 shadow-sm hover:shadow-md hover:border-indigo-100 transition-all flex flex-col min-w-0 overflow-hidden">
-                  
-                  {/* Bagian Header Card */}
+
                   <div className="p-6 pb-4 border-b border-slate-50 flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h4 className="font-bold text-slate-900 text-xl break-words">{topRole.role}</h4>
@@ -430,21 +451,19 @@ function Dashboard() {
                   <div className="flex bg-slate-50/70 px-6 border-b border-slate-100">
                     <button
                       onClick={() => setActiveTab("general")}
-                      className={`py-3 px-4 text-sm font-bold border-b-2 transition-all ${
-                        activeTab === "general"
-                          ? "border-indigo-600 text-indigo-600"
-                          : "border-transparent text-slate-400 hover:text-slate-600"
-                      }`}
+                      className={`py-3 px-4 text-sm font-bold border-b-2 transition-all ${activeTab === "general"
+                        ? "border-indigo-600 text-indigo-600"
+                        : "border-transparent text-slate-400 hover:text-slate-600"
+                        }`}
                     >
                       General Info
                     </button>
                     <button
                       onClick={() => setActiveTab("detail")}
-                      className={`py-3 px-4 text-sm font-bold border-b-2 transition-all ${
-                        activeTab === "detail"
-                          ? "border-indigo-600 text-indigo-600"
-                          : "border-transparent text-slate-400 hover:text-slate-600"
-                      }`}
+                      className={`py-3 px-4 text-sm font-bold border-b-2 transition-all ${activeTab === "detail"
+                        ? "border-indigo-600 text-indigo-600"
+                        : "border-transparent text-slate-400 hover:text-slate-600"
+                        }`}
                     >
                       Market Demand (Details)
                     </button>
@@ -453,10 +472,8 @@ function Dashboard() {
                   {/* KONTEN BERDASARKAN TAB AKTIF */}
                   <div className="p-6 flex-1">
                     {activeTab === "general" ? (
-                      /* ================= TAB GENERAL ================= */
                       <div className="space-y-6 animate-in fade-in duration-200">
                         <p className="text-sm text-slate-600 leading-relaxed min-h-[40px]">
-                          {/* Jauh lebih pintar: Hanya memutar efek ketik jika belum pernah di-generate sebelumnya */}
                           <TypingEffect text={narrativeText} speed={12} shouldAnimate={!hasAnimated} />
                           {!hasAnimated && <span className="inline-block w-1 h-4 bg-indigo-500 ml-1 animate-pulse" />}
                         </p>
@@ -468,7 +485,6 @@ function Dashboard() {
                         </div>
                       </div>
                     ) : (
-                      /* ================= TAB DETAIL ================= */
                       <div className="space-y-4 animate-in fade-in duration-200">
                         <p className="text-xs font-bold uppercase tracking-wider text-amber-600 flex items-center gap-1.5">
                           <Sparkles className="w-3.5 h-3.5" />
@@ -483,23 +499,34 @@ function Dashboard() {
                         ) : roadmap.length > 0 ? (
                           <div className="space-y-2.5">
                             {roadmap.map((step, index) => {
-                              // Konversi skor urgensi string (jika bukan % ) agar seragam ke bentuk persentase
                               const percentVal = step.skor_urgensi?.includes('%') ? step.skor_urgensi : `${step.skor_urgensi}%`;
                               return (
-                                <div 
-                                  key={index} 
+                                <div
+                                  key={index}
                                   className="bg-amber-50/40 border border-amber-100 rounded-xl p-3.5 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-amber-50 transition-colors"
                                 >
-                                  <div className="flex items-center gap-2">
-                                    <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center text-xs font-bold shrink-0">
-                                      {step.langkah ?? (index + 1)}
-                                    </span>
-                                    <div>
-                                      <span className="font-bold text-slate-800">Pelajari "{step.skill}"</span>
-                                      <span className="text-[10px] bg-indigo-50 text-indigo-600 ml-2 px-2 py-0.5 rounded-md font-semibold uppercase tracking-wider">
-                                        {step.kategori || "Technical"}
+                                  <div className="flex items-center justify-between w-full sm:w-auto gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center text-xs font-bold shrink-0">
+                                        {step.langkah ?? (index + 1)}
                                       </span>
+                                      <div>
+                                        <span className="font-bold text-slate-800">Pelajari "{step.skill}"</span>
+                                        <span className="text-[10px] bg-indigo-50 text-indigo-600 ml-2 px-2 py-0.5 rounded-md font-semibold uppercase tracking-wider">
+                                          {step.kategori || "Technical"}
+                                        </span>
+                                      </div>
                                     </div>
+
+                                    {/* TOMBOL STAR UNTUK TRIGGER KE DATABASE 🚀 */}
+                                    <button
+                                      onClick={() => handleSaveSkillToPathway(step.skill)}
+                                      // FIX: Mengubah text-slate-400 (abu-abu) sebagai default, dan hover:text-amber-400 hover:border-amber-300 untuk efek kuning
+                                      className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-400 hover:text-amber-500 hover:border-amber-300 transition-colors shadow-sm ml-2 group/star"
+                                      title="Tambahkan ke wishlist pembelajaran profile"
+                                    >
+                                      <Star className="w-4 h-4 fill-none group-hover/star:fill-amber-400 transition-colors" />
+                                    </button>
                                   </div>
                                   <p className="text-xs text-slate-500 sm:text-right">
                                     karena dicari sebanyak <span className="font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded text-sm">{percentVal}</span> di industri saat ini.
@@ -519,7 +546,7 @@ function Dashboard() {
                 </div>
               )}
 
-              {/* REVISI: Alternative Paths Otomatis Terbuka Tepat Di Bawahnya Jika Tab General Sedang Aktif */}
+              {/* Alternative Paths */}
               {activeTab === "general" && otherRoles.length > 0 && (
                 <div className="space-y-4 pt-4 animate-in fade-in duration-500">
                   <div>
@@ -547,10 +574,31 @@ function Dashboard() {
                 </div>
               )}
             </div>
+
+            {/* UTILITY BUTTON */}
+            <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
+              <button
+                onClick={handleFetchJobs}
+                disabled={jobLoading || loading}
+                className="w-full sm:w-auto bg-white border-2 border-indigo-600 text-indigo-600 font-bold px-6 py-3.5 rounded-xl flex items-center justify-center gap-2 hover:bg-indigo-50 transition-all disabled:opacity-50 disabled:pointer-events-none shadow-sm"
+              >
+                {jobLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Mencari Lowongan...</span>
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-4 h-4" />
+                    <span>Cari Rekomendasi Lowongan Pekerjaan</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         )}
 
-        {/* ================= SEKSI TAMPILAN REKOMENDASI PEKERJAAN BERDASARKAN API BE ================= */}
+        {/* SEKSI TAMPILAN REKOMENDASI PEKERJAAN */}
         {(jobRecommendations.length > 0 || jobLoading) && (
           <div ref={jobRef} className="col-span-12 pt-6 border-t border-slate-100 space-y-6 scroll-mt-24 animate-in fade-in duration-300">
             <div>
@@ -627,8 +675,43 @@ function Dashboard() {
         © 2026 SkillsGap AI Platform
       </footer>
 
+      {/* ================= UI TOAST NOTIFICATION MODERN ================= */}
+      <div
+        className={`fixed bottom-5 right-5 z-50 flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-xl border backdrop-blur-md transition-all duration-300 transform ${toast.show
+          ? "translate-y-0 opacity-100 scale-100"
+          : "translate-y-4 opacity-0 scale-95 pointer-events-none"
+          } ${toast.type === "success"
+            ? "bg-emerald-50/90 border-emerald-200 text-emerald-800"
+            : "bg-rose-50/90 border-rose-200 text-rose-800"
+          }`}
+      >
+        {toast.type === "success" ? (
+          <div className="w-6 h-6 rounded-lg bg-emerald-500 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-sm animate-bounce">
+            ✓
+          </div>
+        ) : (
+          <div className="w-6 h-6 rounded-lg bg-rose-500 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-sm">
+            ✕
+          </div>
+        )}
+
+        <div className="flex flex-col">
+          <span className="text-xs font-bold tracking-wide uppercase opacity-60">
+            {toast.type === "success" ? "System Success" : "System Error"}
+          </span>
+          <p className="text-sm font-semibold mt-0.5">{toast.message}</p>
+        </div>
+
+        <button
+          onClick={() => setToast({ ...toast, show: false })}
+          className="ml-3 text-slate-400 hover:text-slate-600 font-medium text-sm p-1 rounded-md transition-colors"
+        >
+          ✕
+        </button>
+      </div>
+
     </div>
-  )
+  );
 }
 
-export default Dashboard
+export default Dashboard;
