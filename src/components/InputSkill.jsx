@@ -85,7 +85,7 @@ const InputSkill = ({
           </p>
 
           <p className="text-xs text-slate-400 mt-1">
-            Max size 5MB
+            Max size 2MB
           </p>
 
           {/* REMOVE FILE */}
