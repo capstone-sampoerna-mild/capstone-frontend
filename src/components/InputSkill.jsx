@@ -112,7 +112,7 @@ const InputSkill = ({
 
         </div>
 
-        {/* SKILL INPUT */}
+        {/* SKILL INPUT
         <div className="mt-5">
 
           <label className="
@@ -175,7 +175,7 @@ const InputSkill = ({
             handleRemoveSkill={handleRemoveSkill}
           />
 
-        </div>
+        {/* </div> */} 
       </div>
 
       {/* ANALYZE BUTTON */}

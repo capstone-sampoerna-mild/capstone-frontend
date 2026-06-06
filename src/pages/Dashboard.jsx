@@ -32,6 +32,7 @@ function Dashboard() {
   const [roadmapLoading, setRoadmapLoading] = useState(false)
   const [jobRecommendations, setJobRecommendations] = useState(() => JSON.parse(sessionStorage.getItem("dashboard_jobs")) || [])
   const [jobLoading, setJobLoading] = useState(false)
+  const [pathwayCompletedSkills, setPathwayCompletedSkills] = useState([]);
 
   const resultRef = useRef(null)
   const jobRef = useRef(null)
@@ -82,6 +83,28 @@ function Dashboard() {
       return () => clearTimeout(timer)
     }
   }, [narrativeText, hasAnimated])
+
+  useEffect(() => {
+    const fetchLastAnalyzedSkills = async () => {
+      const actualUserId = user?.uid || (typeof storedUser === "string" ? JSON.parse(storedUser)?.uid : storedUser?.uid);
+
+      if (actualUserId && !selectedFile) {
+        try {
+          // Ambil dataset skill yang terakhir kali sukses diekstrak dari resume user
+          const response = await api.get(`/profile/skillset?userId=${actualUserId}`);
+          if (response.data && response.data.status === "ok") {
+            const lastSkills = response.data.data?.skills || response.data.skills || [];
+            // Set ke state dashboard agar visual resume lama tetap muncul sebelum re-analyze
+            setExtractedSkills(lastSkills);
+          }
+        } catch (err) {
+          console.error("Gagal mengambil data histori skill resume:", err);
+        }
+      }
+    };
+
+    fetchLastAnalyzedSkills();
+  }, [selectedFile, user]); // Berjalan ulang jika user login berubah atau file baru di-upload
 
   const clearPreviousResults = () => {
     setRecommendations([])
@@ -170,38 +193,80 @@ function Dashboard() {
 
   const handleAnalyze = async () => {
     try {
-      clearPreviousResults()
-      setLoading(true)
-      let responseData
+      // JANGAN bersihkan extractedSkills jika user tidak mengupload file baru,
+      // supaya kita bisa menggunakan data history resume sebelumnya.
       if (selectedFile) {
-        responseData = await uploadCV({ file: selectedFile, skills, name: user?.name })
-      } else {
-        responseData = await getJobRecommendation({ name: user?.name || "Anonymous", skillset: skills })
+        setExtractedSkills([]);
       }
-      const detectedSkills = responseData?.extracted_skills || []
-      const recommendedRoles = responseData?.top_roles || []
-      setExtractedSkills(detectedSkills)
-      setRecommendations(recommendedRoles)
+      setLoading(true);
 
+      const actualUserId = user?.uid || (typeof storedUser === "string" ? JSON.parse(storedUser)?.uid : storedUser?.uid);
+      let completedStarredSkills = [];
+
+      // 1. Ambil target pembelajaran skill berstatus completed dari profile
+      if (actualUserId) {
+        try {
+          const pathwayResponse = await api.get(`/pathway/${actualUserId}`);
+          const dataArray = Array.isArray(pathwayResponse.data)
+            ? pathwayResponse.data
+            : (pathwayResponse.data?.data || []);
+
+          completedStarredSkills = dataArray
+            .filter(item => item?.status === "completed")
+            .map(item => item?.skill_name);
+
+          setPathwayCompletedSkills(completedStarredSkills);
+        } catch (pathwayErr) {
+          console.error("Gagal mengambil completed starred skills:", pathwayErr);
+        }
+      }
+
+      // 2. TENTUKAN PAYLOAD SKILL GABUNGAN
+      // Jika ada file baru, gabungkan array input skills dasar + completed pathway.
+      // Jika TIDAK ada file baru (pindah page), gabungkan data resume lama (extractedSkills) + completed pathway.
+      const baseSkills = selectedFile ? skills : extractedSkills;
+      const finalSkillsPayload = [...new Set([...baseSkills, ...completedStarredSkills])];
+
+      let responseData;
+      if (selectedFile) {
+        // Jika ada file fisik baru di-upload, lakukan hit upload CV murni
+        responseData = await uploadCV({ file: selectedFile, skills: finalSkillsPayload, name: user?.name });
+      } else {
+        // Jika tidak ada file (kasus balik dari page profile), gunakan rekomendasi berbasis total skillset gabungan
+        responseData = await getJobRecommendation({ name: user?.name || "Anonymous", skillset: finalSkillsPayload });
+      }
+
+      // Jika response tidak mengembalikan extracted_skills (karena hit endpoint non-file), 
+      // kita tetap amankan visualnya menggunakan resume skill lama kita.
+      const detectedSkills = responseData?.extracted_skills && responseData.extracted_skills.length > 0
+        ? responseData.extracted_skills
+        : baseSkills;
+
+      const recommendedRoles = responseData?.top_roles || [];
+      setExtractedSkills(detectedSkills);
+      setRecommendations(recommendedRoles);
+
+      // Alur penanganan Roadmap Gap analysis tetap sama di bawah ini...
       if (recommendedRoles.length > 0) {
-        const primaryRole = recommendedRoles[0]
-        const totalSkillsToLearn = primaryRole.recommended_skill_to_learn || []
-        const currentActiveSkills = detectedSkills.length > 0 ? detectedSkills : skills
+        const primaryRole = recommendedRoles[0];
+        const totalSkillsToLearn = primaryRole.recommended_skill_to_learn || [];
+        const currentActiveSkills = [...new Set([...detectedSkills, ...finalSkillsPayload])];
+
         const computedGaps = totalSkillsToLearn
           .filter((recSkill) => !currentActiveSkills.some((ownSkill) => ownSkill.toLowerCase() === (typeof recSkill === "object" ? recSkill.skill.toLowerCase() : recSkill.toLowerCase())))
-          .map((s) => (typeof s === "object" ? s.skill : s))
+          .map((s) => (typeof s === "object" ? s.skill : s));
 
         if (computedGaps.length > 0) {
-          await handleFetchRoadmap(computedGaps)
+          await handleFetchRoadmap(computedGaps);
         }
       }
     } catch (error) {
-      console.error("ANALYZE ERROR:", error)
-      showNotification("Failed to generate AI recommendation", "error")
+      console.error("ANALYZE ERROR:", error);
+      showNotification("Failed to generate AI recommendation", "error");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleFetchJobs = async () => {
     const activeSkills = extractedSkills.length > 0 ? extractedSkills : skills
@@ -266,7 +331,10 @@ function Dashboard() {
               </div>
 
               {/* MANGGIL SUB COMPONENT 1: DETECTED SKILLS */}
-              <DetectedSkills extractedSkills={extractedSkills} roadmap={roadmap} />
+              <DetectedSkills
+                extractedSkills={[...new Set([...extractedSkills, ...pathwayCompletedSkills])]}
+                roadmap={roadmap}
+              />
 
               {/* MANGGIL SUB COMPONENT 2: CAREER PATH CARD */}
               <CareerPathCard
