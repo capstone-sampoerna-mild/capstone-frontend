@@ -1,4 +1,4 @@
-import { User, LayoutDashboard, LogOut, X, Clock } from "lucide-react" // 1. IMPORT CLOCK ICON DI SINI 👈
+import { User, LayoutDashboard, LogOut, X, Clock } from "lucide-react"
 import { NavLink, useNavigate } from "react-router-dom"
 import { signOut } from "firebase/auth"
 import { auth } from "../services/firebase"
@@ -7,14 +7,12 @@ function cn(...classes) {
   return classes.filter(Boolean).join(" ")
 }
 
-// 2. TAMBAHKAN PATH MENU HISTORY DI DALAM ARRAY NAVITEMS 👈
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
   { icon: Clock, label: "History", path: "/history" },
   { icon: User, label: "Profile", path: "/profile" },
 ]
 
-// KOMPONEN LOGO CUSTOM SVG (Selaras dengan Halaman Login)
 const AppLogo = ({ className = "w-9 h-9" }) => (
   <div className={`flex items-center justify-center bg-indigo-500/10 border border-indigo-500/20 rounded-xl shrink-0 ${className}`}>
     <svg className="w-5 h-5 text-indigo-400" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -33,7 +31,7 @@ function Sidebar({ isOpen, setIsOpen }) {
       await signOut(auth)
       localStorage.removeItem("token")
       localStorage.removeItem("user")
-      sessionStorage.clear();
+      sessionStorage.clear()
       navigate("/login")
     } catch (error) {
       console.error("Logout Error:", error)
@@ -42,26 +40,20 @@ function Sidebar({ isOpen, setIsOpen }) {
 
   return (
     <>
-      {/* OVERLAY MOBILE: Hanya muncul di HP saat sidebar terbuka */}
+      {/* OVERLAY MOBILE: Hanya aktif di layar kecil (<768px) jika sedang terbuka */}
       {isOpen && (
         <div
           onClick={() => setIsOpen(false)}
-          className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          className="fixed inset-0 bg-black/50 z-40 md:hidden transition-opacity duration-300"
         />
       )}
 
       {/* SIDEBAR PANEL */}
       <aside
         className={cn(
-          `
-          fixed top-0 left-0 z-50
-          h-screen w-64
-          bg-slate-950
-          flex flex-col py-8
-          transition-all duration-300
-          border-r border-slate-900
-          `,
-          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+          "fixed top-0 left-0 z-50 h-screen w-64 bg-slate-950 flex flex-col py-8 border-r border-slate-900 transition-transform duration-300 ease-in-out",
+          // 💡 SOLUSI KUNCI: Di HP mengikuti isOpen, di desktop juga menyembunyikan diri jika isOpen = false
+          isOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
         {/* TOMBOL CLOSE KHUSUS HP */}
@@ -72,8 +64,8 @@ function Sidebar({ isOpen, setIsOpen }) {
           <X className="w-5 h-5" />
         </button>
 
-        {/* BRAND LOGO BARU (Premium & Selaras dengan Identitas Baru) */}
-        <div className="px-6 mb-10 mt-4 md:mt-6 flex items-start gap-3">
+        {/* BRAND LOGO */}
+        <div className="px-6 mb-10 mt-4 flex items-start gap-3">
           <AppLogo />
           <div className="flex flex-col">
             <h1 className="text-sm font-bold text-white tracking-wide leading-tight">
@@ -98,23 +90,8 @@ function Sidebar({ isOpen, setIsOpen }) {
               }}
               className={({ isActive }) =>
                 cn(
-                  `
-                  flex items-center
-                  space-x-3.5
-                  px-6 py-3
-                  text-slate-400
-                  hover:text-indigo-400
-                  hover:bg-slate-900/60
-                  transition-all duration-200
-                  rounded-r-xl
-                  `,
-                  isActive &&
-                    `
-                    bg-slate-900
-                    text-indigo-400
-                    font-bold
-                    border-l-4 border-indigo-500
-                    `
+                  "flex items-center space-x-3.5 px-6 py-3 text-slate-400 hover:text-indigo-400 hover:bg-slate-900/60 transition-all duration-200 rounded-r-xl",
+                  isActive && "bg-slate-900 text-indigo-400 font-bold border-l-4 border-indigo-500"
                 )
               }
             >
